@@ -15,7 +15,7 @@ pip install -r requirement.txt
 After installation, you can verify the game is functional by playing it yourself:
 
 ```bash
-python3 play_game.py level 1
+python3 play_game.py --level 1
 ```
 
 The five levels of the game are:
