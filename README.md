@@ -27,7 +27,7 @@ We break down the assignment description into the following sections:
 3. [Game information](documentation/GAME_INFORMATION.MD)
 4. [Assessment description](documentation/ASSESSMENT_DESCRIPTION.md)
 5. [Helpful advice](documentation/HELPFUL_ADVICE.md)
-
+6. [Secrete level revealed!](documentation/SECRET_LEVEL.md)
 
 
 
