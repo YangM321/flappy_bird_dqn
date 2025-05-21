@@ -109,9 +109,17 @@ class MyAgent:
         if state['score'] > self.prev_score:
             reward = +100
         self.prev_score = state['score']
-
-        if not done:
-            reward += 5 * (1-abs(new_state_vec[3]))
+        
+        # for level 1 -- stay at centre of the screen
+        #if not done:
+            #reward += 5 * (1-abs(new_state_vec[3]))
+        
+        # for level 2
+        if not done and len(state['pipes']) > 0:
+            pipe = state['pipes'][0]
+            pipe_mid = (pipe['top'] + pipe['bottom']) / 2
+            dy = pipe_mid - state['bird_y']
+            reward += 2.0 * (1 - abs(dy) / 300)
 
         self.storage.append((self.prev_state, self.prev_action, reward, new_state_vec, done))
         
