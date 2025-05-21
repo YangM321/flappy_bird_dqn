@@ -27,7 +27,7 @@ class MyAgent:
         # initialise Q_f's parameter by Q's, here is an example
         MyAgent.update_network_model(net_to_update=self.network2, net_as_source=self.network)
 
-        self.epsilon = 1  # probability ε in Algorithm 2
+        self.epsilon = 1.0  # probability ε in Algorithm 2
         self.n = 64  # the number of samples you'd want to draw from the storage each time
         self.discount_factor = 0.99  # γ in Algorithm 2
         self.prev_score = 0
@@ -102,29 +102,100 @@ class MyAgent:
             None
         """
         # following pseudocode to implement this function
-
+        
         new_state_vec = self.extract_features(state)
         done = state['done']
         reward = -100 if done else -1
         if state['score'] > self.prev_score:
             reward = +100
         self.prev_score = state['score']
-        
-        # for level 1 -- stay at centre of the screen
-        #if not done:
-            #reward += 5 * (1-abs(new_state_vec[3]))
-        
-        # for level 2
-        if not done and len(state['pipes']) > 0:
-            pipe = state['pipes'][0]
-            pipe_mid = (pipe['top'] + pipe['bottom']) / 2
-            dy = pipe_mid - state['bird_y']
-            reward += 2.0 * (1 - abs(dy) / 300)
 
-        self.storage.append((self.prev_state, self.prev_action, reward, new_state_vec, done))
+        pipe_info = state.get('pipe_attributes', {})
+        gap = pipe_info.get('gap', 0)
+        formation = pipe_info.get('formation', '')
+
+        if gap >= 500:
+            level = 1
+        elif gap == 150 and formation == 'random':
+            level = 2
+        elif formation == 'sine':
+            level = 3
+        else:
+            level = 4  # for levels 4–6
+
+
+        # for all levels
+
         
 
-        if self.mode == 'train' and len(self.storage) >= self.n:
+        if not done:
+            dy_norm = new_state_vec[3]
+            vel_norm = new_state_vec[1]
+            prev_dy_norm = self.prev_state[3] if hasattr(self, 'prev_state') else dy_norm
+
+
+
+        #level 1: no pipe
+        
+            if level == 1:
+                reward += 5 * (1-abs(dy_norm))
+
+            elif level == 2:
+                reward += 8 * (1-abs(dy_norm))
+                reward += 3 * (1-abs(vel_norm))
+                reward += 4
+
+            elif level == 3:
+                reward += 8 * (1-abs(dy_norm))
+                reward += 3 * (1-abs(vel_norm))
+                reward += 4
+
+                if abs(dy_norm) < abs(prev_dy_norm):
+                    reward += 2
+                elif abs(dy_norm) < abs(prev_dy_norm):
+                    reward -= 2
+
+            elif level == 4:
+                reward += 10 * (1-abs(dy_norm))
+                reward += 5 * (1-abs(vel_norm))
+
+                if abs(dy_norm) < abs(prev_dy_norm):
+                    reward += 3
+                elif abs(dy_norm) > abs(prev_dy_norm):
+                    reward -= 3
+
+            elif level == 5:
+                reward += 10 * (1-abs(dy_norm))
+                reward += 5 * (1-abs(vel_norm))
+            
+                if abs(dy_norm) < abs(prev_dy_norm):
+                    reward += 3
+                elif abs(dy_norm) > abs(prev_dy_norm):
+                    reward -= 3
+
+                bird_y_norm = new_state_vec[0]
+                edge_distance = min(bird_y_norm, 1-bird_y_norm)
+
+                if edge_distance < 0.1:
+                    reward -= 5
+
+            elif level == 6:
+                reward += 12 * (1-abs(dy_norm))
+                reward += 8 * (1-abs(vel_norm))
+            
+                if abs (dy_norm) < abs (prev_dy_norm):
+                    reward += 4
+                elif abs(dy_norm) > abs(prev_dy_norm):
+                    reward -= 4
+
+                bird_y_norm = new_state_vec[0]
+                edge_distance = min(bird_y_norm, 1 - bird_y_norm)
+                if edge_distance < 0.1:
+                    reward -= 5
+
+        self.storage.append((self.prev_state, self.prev_action,reward, new_state_vec, done))
+
+        if self.mode == 'train' and len(self.storage) > self.n:
             batch = random.sample(self.storage, self.n)
             states, actions, rewards, next_states, dones = zip(*batch)
 
@@ -136,9 +207,10 @@ class MyAgent:
 
             next_q_values = self.network2.predict(next_states)
             max_next_q = np.max(next_q_values, axis=1)
-            targets = rewards + self.discount_factor * max_next_q * (1 - dones)
+            targets = rewards + self.discount_factor * max_next_q * (1 - dones.astype(int))
 
             q_values = self.network.predict(states)
+
             for i in range(self.n):
                 q_values[i][actions[i]] = targets[i]
             W = np.ones_like(q_values)
@@ -149,9 +221,7 @@ class MyAgent:
 
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
             
-
-
-
+        
 
 
 
@@ -196,13 +266,13 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--level', type=int, default=1)
-
     args = parser.parse_args()
 
     # bare-bone code to train your agent (you may extend this part as well, we won't run your agent training code)
     env = FlappyBirdEnv(config_file_path='config.yml', show_screen=True, level=args.level, game_length=50)
     agent = MyAgent(show_screen=True)
     episodes = 10000
+
     for episode in range(episodes):
         env.play(player=agent)
         
@@ -217,8 +287,6 @@ if __name__ == '__main__':
 
         # you'd want to clear the memory after one or a few episodes
         ...
-        if episode % 20 == 0:
-            agent.storage.clear()
 
         # you'd want to update the fixed Q-target network (Q_f) with Q's model parameter after one or a few episodes
         ...
@@ -232,7 +300,7 @@ if __name__ == '__main__':
     agent2 = MyAgent(show_screen=False, load_model_path='my_model.ckpt', mode='eval')
 
     scores = []
-    for episode in range(10):
+    for _ in range(10):
         env2.play(player=agent2)
         scores.append(env2.score)
 
