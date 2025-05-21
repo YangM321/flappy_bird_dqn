@@ -30,6 +30,7 @@ class MyAgent:
         self.epsilon = 1  # probability ε in Algorithm 2
         self.n = 64  # the number of samples you'd want to draw from the storage each time
         self.discount_factor = 0.99  # γ in Algorithm 2
+        self.prev_score = 0
 
         # do not modify this
         if load_model_path:
@@ -104,9 +105,13 @@ class MyAgent:
 
         new_state_vec = self.extract_features(state)
         done = state['done']
-        reward = 1
-        if done:
+        if state['done']:
             reward = -100
+        elif state['score'] > self.prev_score:
+            reward = +100
+        else:
+            reward = -1
+        self.prev_score = state['score']
 
         self.storage.append((self.prev_state, self.prev_action, reward, new_state_vec, done))
 
@@ -181,7 +186,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # bare-bone code to train your agent (you may extend this part as well, we won't run your agent training code)
-    env = FlappyBirdEnv(config_file_path='config.yml', show_screen=True, level=args.level, game_length=10)
+    env = FlappyBirdEnv(config_file_path='config.yml', show_screen=True, level=args.level, game_length=50)
     agent = MyAgent(show_screen=True)
     episodes = 10000
     for episode in range(episodes):
