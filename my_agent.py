@@ -21,9 +21,9 @@ class MyAgent:
 
         # modify these
         self.storage = deque(maxlen=10000)
-        self.network = MLPRegression(input_dim=8, output_dim=3, learning_rate=0.001)
+        self.network = MLPRegression(input_dim=6, output_dim=3, learning_rate=0.0005)
         # network2 has identical structure to network1, network2 is the Q_f
-        self.network2 = MLPRegression(input_dim=8, output_dim=3, learning_rate=0.001)
+        self.network2 = MLPRegression(input_dim=6, output_dim=3, learning_rate=0.0005)
         # initialise Q_f's parameter by Q's, here is an example
         MyAgent.update_network_model(net_to_update=self.network2, net_as_source=self.network)
 
@@ -31,6 +31,9 @@ class MyAgent:
         self.n = 64  # the number of samples you'd want to draw from the storage each time
         self.discount_factor = 0.99  # γ in Algorithm 2
         self.prev_score = 0
+        self.epsilon_min = 0.05
+        self.epsilon_decay = 0.995
+        self.tau = 0.01
 
         # do not modify this
         if load_model_path:
@@ -38,31 +41,28 @@ class MyAgent:
 
     def extract_features(self, state: dict) -> np.ndarray:
 
-        bird_x = state['bird_x']
         bird_y = state['bird_y']
         bird_velocity = state['bird_velocity']
-        screen_width = state['screen_width']
         screen_height = state['screen_height']
+        pipes = state['pipes']
 
-        if state['pipes']:
-            pipe = state['pipes'][0]
+        if pipes:
+            pipe = pipes[0]
             pipe_x = pipe.get('x', 400)
-            pipe_top_y = pipe.get('top', 0)
-            pipe_bottom_y = pipe.get('bottom', 600)
+            pipe_mid = (pipe.get('top', 0) + pipe.get('bottom', 600)) / 2
+            dx = pipe_x - state['bird_x']
+            dy = pipe_mid - bird_y
         else:
-            pipe_x = 400
-            pipe_top_y = 0
-            pipe_bottom_y = 600
+            dx = 100
+            dy = 0
 
         features = np.array([
-            bird_y,
-            bird_velocity,
-            screen_width,
-            screen_height,
-            pipe_x - bird_x,
-            pipe_top_y,
-            pipe_bottom_y,
-            pipe_bottom_y - bird_y,
+            bird_y / screen_height,
+            bird_velocity / 10,
+            dx / 300,
+            dy / 300,
+            (screen_height - bird_y) / screen_height,
+            bird_y / screen_height
         ], dtype = np.float32)
 
         return features
@@ -105,15 +105,16 @@ class MyAgent:
 
         new_state_vec = self.extract_features(state)
         done = state['done']
-        if state['done']:
-            reward = -100
-        elif state['score'] > self.prev_score:
+        reward = -100 if done else -1
+        if state['score'] > self.prev_score:
             reward = +100
-        else:
-            reward = -1
         self.prev_score = state['score']
 
+        if not done:
+            reward += 5 * (1-abs(new_state_vec[3]))
+
         self.storage.append((self.prev_state, self.prev_action, reward, new_state_vec, done))
+        
 
         if self.mode == 'train' and len(self.storage) >= self.n:
             batch = random.sample(self.storage, self.n)
@@ -126,14 +127,19 @@ class MyAgent:
             dones = np.array(dones)
 
             next_q_values = self.network2.predict(next_states)
-            max_next_q = np.max(next_q_values, axis = 1)
-            targets = rewards + self.discount_factor * max_next_q * (1-dones) 
+            max_next_q = np.max(next_q_values, axis=1)
+            targets = rewards + self.discount_factor * max_next_q * (1 - dones)
 
             q_values = self.network.predict(states)
             for i in range(self.n):
                 q_values[i][actions[i]] = targets[i]
             W = np.ones_like(q_values)
             self.network.fit_step(states, q_values, W)
+
+        for param, target_param in zip(self.network.parameters(), self.network2.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1.0 - self.tau) * target_param.data)
+
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
             
 
 
@@ -191,6 +197,7 @@ if __name__ == '__main__':
     episodes = 10000
     for episode in range(episodes):
         env.play(player=agent)
+        
 
         # env.score has the score value from the last play
         # env.mileage has the mileage value from the last play
@@ -216,9 +223,8 @@ if __name__ == '__main__':
     env2 = FlappyBirdEnv(config_file_path='config.yml', show_screen=False, level=args.level)
     agent2 = MyAgent(show_screen=False, load_model_path='my_model.ckpt', mode='eval')
 
-    episodes = 10
-    scores = list()
-    for episode in range(episodes):
+    scores = []
+    for episode in range(10):
         env2.play(player=agent2)
         scores.append(env2.score)
 
