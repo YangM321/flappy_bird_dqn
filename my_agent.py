@@ -133,7 +133,8 @@ class MyAgent:
             vel_norm = new_state_vec[1]
             prev_dy_norm = self.prev_state[3] if hasattr(self, 'prev_state') else dy_norm
             dx_norm = new_state_vec[2]
-
+            edge_distance = min(bird_y_norm, 1-bird_y_norm)
+            bird_y_norm = new_state_vec[0]
 
 
         #level 1: no pipe
@@ -174,9 +175,6 @@ class MyAgent:
                 elif abs(dy_norm) > abs(prev_dy_norm):
                     reward -= 3
 
-                bird_y_norm = new_state_vec[0]
-                edge_distance = min(bird_y_norm, 1-bird_y_norm)
-
                 if edge_distance < 0.1:
                     reward -= 5
 
@@ -193,8 +191,6 @@ class MyAgent:
                 if edge_distance < 0.15:
                     reward -= 6
 
-                bird_y_norm = new_state_vec[0]
-                edge_distance = min(bird_y_norm, 1 - bird_y_norm)
                 if edge_distance < 0.1:
                     reward -= 5
 
